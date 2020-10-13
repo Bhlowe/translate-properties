@@ -22,6 +22,18 @@ public class TranslateProperties {
     int count;
     HashSet<String> languages = new HashSet<>();
 
+    // use for tests to check if key exists.
+    public static boolean hasAPIKey()
+    {
+        String k = System.getenv("GOOGLE_API_KEY");
+        boolean hasKey =  k!=null && !k.isEmpty();
+        if (!hasKey)
+        {
+            System.out.println("Warning: GOOGLE_API_KEY not defined");
+        }
+        return hasKey;
+    }
+
     // TranslateProperties.main([file], [languages])
     // File of base properties file to translate (defaults to test directory.)
     // Languages is comma separated list of language identifiers. (defaults to defaultLanguages)
@@ -89,7 +101,7 @@ public class TranslateProperties {
             if (diffFile.exists()) {
                 Properties lastSavedProperties = PropertyUtils.readProperties(diffFile);
                 Set<Map.Entry<Object, Object>> entrySet = baseProperties.entrySet();
-                for (var e : entrySet) {
+                for (Map.Entry e : entrySet) {
 
                     String key = e.getKey().toString();
                     String value = e.getValue().toString();
@@ -147,7 +159,7 @@ public class TranslateProperties {
             for (Map.Entry<Object, Object> e : baseProperties.entrySet()) {
                 String key = e.getKey().toString();
                 String value = e.getValue().toString();
-                if (value == null || keySet.contains(key)) {
+                if (keySet.contains(key)||!p.containsKey(key)) {
                     String translatedString = GoogleTranslate.instance.translateFormattedString(value, getSourceLanguage(), targetLanguage);
                     p.put(key, translatedString);
                     count++;

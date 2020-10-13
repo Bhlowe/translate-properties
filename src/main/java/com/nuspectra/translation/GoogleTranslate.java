@@ -61,7 +61,8 @@ public enum GoogleTranslate {
         escapeMap.put("\\n", "<br>");
         escapeMap.put("\\t", "  ");
 
-        // Alternate method, but will fail if non-arabic numerals are translated.
+        // Alternate method, but could fail (?) if non-arabic numerals are translated.
+        // But might give better translations so google knows a number is part of the translation
         if (false) {
             escapeMap.put("%f", "12345.98765");
             escapeMap.put("%d", "54321");
