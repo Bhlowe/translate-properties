@@ -4,6 +4,7 @@ import com.google.cloud.translate.Translate;
 import com.google.cloud.translate.TranslateOptions;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.*;
 
@@ -23,12 +24,10 @@ public class TranslateProperties {
     HashSet<String> languages = new HashSet<>();
 
     // use for tests to check if key exists.
-    public static boolean hasAPIKey()
-    {
+    public static boolean hasAPIKey() {
         String k = System.getenv("GOOGLE_API_KEY");
-        boolean hasKey =  k!=null && !k.isEmpty();
-        if (!hasKey)
-        {
+        boolean hasKey = k != null && !k.isEmpty();
+        if (!hasKey) {
             System.out.println("Warning: GOOGLE_API_KEY not defined");
         }
         return hasKey;
@@ -40,31 +39,44 @@ public class TranslateProperties {
     public static void main(String[] args) {
         try {
             File f = args.length > 0 ? new File(args[0]) : new File("test");
-            if (f.exists()) {
-                TranslateProperties tp = new TranslateProperties(f);
-                // set languages to translate.
-                if (args.length > 1) {
-                    for (String l : args[1].split(","))
-                        tp.languages.add(l.trim());
-                }
-                tp.updateAll();
-            } else {
-                System.out.println("Specify source properties file to be translated. File not found: "+f.getAbsolutePath());
-            }
+            String languages = null;
+            if (args.length > 1) languages = args[1];   // if language list is provided, use that, otherwise use defaultLanguages
+            updateProperties(f, languages);
+
         } catch (Throwable th) {
             th.printStackTrace();
         }
     }
 
+    public static Set<String> updateProperties(File mainProperty, String languages) throws Exception {
+
+        if (!mainProperty.exists())
+            throw new FileNotFoundException("fnf:" + mainProperty.getAbsolutePath());
+
+        TranslateProperties tp = new TranslateProperties(mainProperty);
+        // set languages to translate.
+        if (languages != null && languages.length() > 1) {
+            tp.setLanguages(languages);
+        }
+        return tp.updateAll();
+    }
+
+    // string of comma separated languages... eg. en, fr, es
+    public void setLanguages(String languages) {
+        this.languages.clear();
+        for (String l : languages.trim().split(","))
+            this.languages.add(l.trim());
+    }
+
     // Translate strings that have changed since last translation
     // Also translates any missing translations.
-    public void updateAll() throws Exception {
-        translateOrUpdateAll(true);
+    public Set<String> updateAll() throws Exception {
+        return translateOrUpdateAll(true);
     }
 
     // Translate all strings, replacing any existing ones.
-    public void translateAll() throws Exception {
-        translateOrUpdateAll(false);
+    public Set<String> translateAll() throws Exception {
+        return translateOrUpdateAll(false);
     }
 
     // override or change if source language is not english.
@@ -81,14 +93,12 @@ public class TranslateProperties {
     }
 
     // this saves the {baseName}_en.properties file. It could be saved elsewhere
-    protected File getChangedFile()
-    {
+    protected File getChangedFile() {
         return getFileDest(getSourceLanguage());
     }
 
 
-    private void translateOrUpdateAll(boolean updateOnly) throws Exception {
-
+    private Set<String> translateOrUpdateAll(boolean updateOnly) throws Exception {
         HashSet<String> keySet = new HashSet<>();       // Keys to update.
         if (!updateOnly) {
             for (Object o : baseProperties.keySet())
@@ -126,8 +136,8 @@ public class TranslateProperties {
 
         // save a copy of the properties so we know which have been modified next time run.
         writeProperties(baseProperties, getChangedFile());
-
         System.out.println("Updated. Translated " + count);
+        return keySet;
     }
 
     public TranslateProperties(File baseFile) throws Exception {
@@ -159,7 +169,7 @@ public class TranslateProperties {
             for (Map.Entry<Object, Object> e : baseProperties.entrySet()) {
                 String key = e.getKey().toString();
                 String value = e.getValue().toString();
-                if (keySet.contains(key)||!p.containsKey(key)) {
+                if (keySet.contains(key) || !p.containsKey(key)) {
                     String translatedString = GoogleTranslate.instance.translateFormattedString(value, getSourceLanguage(), targetLanguage);
                     p.put(key, translatedString);
                     count++;
