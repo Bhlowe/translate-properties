@@ -3,6 +3,7 @@ package com.nuspectra.translation;
 import com.google.cloud.translate.Translate;
 import com.google.cloud.translate.TranslateOptions;
 import com.google.cloud.translate.Translation;
+import org.apache.commons.lang3.StringEscapeUtils;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -28,7 +29,9 @@ public enum GoogleTranslate {
                         Translate.TranslateOption.sourceLanguage(sourceLanguage),
                         Translate.TranslateOption.targetLanguage(targetLanguage),
                         Translate.TranslateOption.format(format));
-        return translation.getTranslatedText();
+        String out = translation.getTranslatedText();
+
+        return out;
     }
 
 
@@ -36,8 +39,16 @@ public enum GoogleTranslate {
         String text = escapeString(string);
 
         try {
+
             String translated = translate(text, sourceLanguage, targetLanguage, "html");
+            boolean ok1 = FixTranslation.instance.checkOutputOK(string, translated);
             String unescaped = unescapeString(translated);
+            unescaped = FixTranslation.instance.fixLine(unescaped, text);
+            boolean ok2 = FixTranslation.instance.checkOutputOK(string, translated);
+
+            if (!ok1 || !ok2)
+                throw new Exception("Failed to preserve macros... failing");
+
             return unescaped;
         } catch (Exception th) {
             System.err.println("Error translating to " + targetLanguage + " " + text);
@@ -83,16 +94,25 @@ public enum GoogleTranslate {
         for (Map.Entry<String, String> e : escapeMap.entrySet()) {
             out = out.replace(e.getKey(), e.getValue());
         }
+
+        // now there may be other strings to replace..
+        // for instance, '%s' often gets translated to ' %s ' which we can "fix" here if we know all of the quirks of google translate.
+        // so replace ' %s ', "'%s'"
+
+
         return out;
     }
 
     public String unescapeString(String line) {
-        String out = line;
+        String out = StringEscapeUtils.unescapeHtml4(line);
+
         for (Map.Entry<String, String> e : escapeMap.entrySet()) {
             out = out.replace(e.getValue(), e.getKey());
         }
+        // convert &#nnn; escaped characters.
         return out;
     }
+
 
 
 }

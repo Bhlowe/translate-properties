@@ -41,11 +41,13 @@ When you edit or add to "test/base.properties" and run TestPropertFileTranslatio
 This project uses Google cloud translate API . 
 https://cloud.google.com/translate/docs/quickstart-client-libraries 
 
-## TODO
+## Fixing the output
 Translations are not perfect - Getting spaces before and after escaped characters, for instance:
+```
 TEST_NEWLINE=Danke dir \n Bitte.
 TEST_STRING=Hallo %s !
-
+```
+Added a new class called FixTranslation to help reduce the translation mistakes that are created.
 
 ## Notes
 This is just a quick project to translate some strings used in an app. I'm sure better systems exist.. 
