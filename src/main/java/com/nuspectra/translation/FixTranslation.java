@@ -7,29 +7,26 @@ public enum FixTranslation {
 
     public int count(String text, String find) {
         int index = 0, count = 0, length = find.length();
-        while( (index = text.indexOf(find, index)) != -1 ) {
-            index += length; count++;
+        while ((index = text.indexOf(find, index)) != -1) {
+            index += length;
+            count++;
         }
         return count;
     }
 
-    int countMacros(String in)
-    {
+    int countMacros(String in) {
         int c = 0;
-        for (String m:knownMacros)
-        {
+        for (String m : knownMacros) {
             c += count(in, m);
         }
         return c;
     }
 
-    boolean checkOutputOK(String translated, String orig)
-    {
+    boolean checkOutputOK(String translated, String orig) {
         int oc = countMacros(orig);
         int tc = countMacros(translated);
-        if (oc!=tc)
-        {
-            System.out.println("Macro Error!\n"+orig+"\n"+translated);
+        if (oc != tc) {
+            System.out.println("Macro Error!\n" + orig + "\n" + translated);
             return false;
         }
         return true;
@@ -47,9 +44,24 @@ public enum FixTranslation {
         return s;
     }
 
-    public String fixLine(String s, String inputString) {
+    public String fixLine(final String s, String inputString) {
+        String copy = s;
+        int count = 0;
+
+        for (int x = 0; x < 100; x++) {
+            String out = _fixLine(copy, inputString);
+            if (out.equals(copy))
+                return out;
+            count++;
+            System.out.println("taking another attempt: " + s);
+            copy = out;
+        }
+        return copy;
+    }
+
+    private String _fixLine(String s, String inputString) {
         boolean ok = checkOutputOK(s, inputString);
-        assert(ok);
+        assert (ok);
 
         s = s.replace("\\ N", "\\n");
         s = s.replace("\\ n", "\\n");
@@ -67,21 +79,26 @@ public enum FixTranslation {
         s = s.replace("&quot;", "\"");
         s = s.replace("&#39;", "'");
 
-        if (s.contains("&"))
-        {
+
+        s = s.replace("' %d'", "'%d'");
+        s = s.replace("' %s'", "'%s'");
+
+        s = s.replace("( %", "(%");
+
+
+        if (s.contains("&")) {
             // Unescape failed... ?
-            System.out.println("& found in output:"+s);
+            System.out.println("& found in output:" + s);
         }
 
-        s = s.replace(" .", ".");
+        // s = s.replace(" .", ".");       // This actually is correct in some languages.
 
         s = s.trim();
 
         boolean ok2 = checkOutputOK(s, inputString);
-        if (!ok2)
-        {
-            System.err.println("Failure with macro counts:"+s+" from "+inputString);
-            assert(ok2);
+        if (!ok2) {
+            System.err.println("Failure with macro counts:" + s + " from " + inputString);
+            assert (ok2);
         }
         return s;
     }

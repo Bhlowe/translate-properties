@@ -1,8 +1,5 @@
 package com.nuspectra.translation;
 
-import com.google.cloud.translate.Translate;
-import com.google.cloud.translate.TranslateOptions;
-
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -13,8 +10,7 @@ public class TranslateProperties {
 
     final Properties baseProperties;    // input key=value properties
 
-    final Translate translate = TranslateOptions.getDefaultInstance().getService();
-    String defaultLanguages[] = {"ar", "fr", "es", "ru", "hi", "de"};       // jp is failing
+    String[] defaultLanguages = {"ar", "fr", "es", "ru", "hi", "de"};       // jp is failing
 
     final File dir; // directory of propertyFiles to work on.
     final File inputFile;       // basePropertyFile
@@ -22,6 +18,7 @@ public class TranslateProperties {
     boolean verbose = true;
     int count;
     HashSet<String> languages = new HashSet<>();
+    boolean requireUpperCaseKeys = true;
 
     // use for tests to check if key exists.
     public static boolean hasAPIKey() {
@@ -32,6 +29,7 @@ public class TranslateProperties {
         }
         return hasKey;
     }
+
 
     // TranslateProperties.main([file], [languages])
     // File of base properties file to translate (defaults to test directory.)
@@ -54,6 +52,9 @@ public class TranslateProperties {
         }
     }
 
+    public static Set<String> updateProperties(File mainProperty, String languages) throws Exception {
+        return updateProperties(mainProperty, languages, true, true, true);
+    }
 
     public static Set<String> updateProperties(File mainProperty, String languages, boolean fix, boolean update, boolean saveChanges) throws Exception {
 
@@ -106,15 +107,27 @@ public class TranslateProperties {
 
             // For all languages desired.. translate the keys.
             for (String l : getLanguages())
-                if (!l.equals(getSourceLanguage()))
-                    translateStrings(l, keySet, saveChanges);
+                translateStrings(l, keySet, saveChanges);
         }
 
         // save a copy of the properties so we know which have been modified next time run.
         if (saveChanges)
             writeProperties(baseProperties, getChangedFile());
-        System.out.println("Updated. Translated " + count);
+        System.out.println("write=" + saveChanges + " fix=" + fix + " translated " + count + "\n" + inspect());
         return keySet;
+    }
+
+    public String inspect() throws IOException {
+
+        String out = getSourceLanguage() + "\t" + baseProperties.size() + "\t" + wordCount(baseProperties) + "\n";
+
+        for (String l : getLanguages()) {
+            Properties p = getProperties(l);
+            out += l + "\t" + p.size() + "\t" + wordCount(p) + "\n";
+        }
+
+        return out;
+
     }
 
     // string of comma separated languages... eg. en, fr, es
@@ -196,32 +209,71 @@ public class TranslateProperties {
         return keySet;
     }*/
 
+    public Properties getProperties(String lang) throws IOException {
+        if (lang.isEmpty())
+            return baseProperties;
+        assert (languages.contains(lang));
+        File file = getFileDest(lang);
+        if (file.exists()) {
+            return PropertyUtils.readProperties(file);
+        }
+        return new Properties();
+    }
+
+
     public Collection<String> fixTranslations(boolean saveChanges) throws IOException {
         Collection<String> changes = new HashSet<>();
 
 
-        for (String l : getLanguages())
-            if (!l.equals(getSourceLanguage())) {
-                File file = getFileDest(l);
-                if (file.exists()) {
-                    Properties props = PropertyUtils.readProperties(file);
+        for (String l : getLanguages()) {
+            File file = getFileDest(l);
+            if (file.exists()) {
+                Properties props = PropertyUtils.readProperties(file);
 
 
-                    int changed = fixTranslations(props);
-                    if (changed > 0) {
-                        changes.add(l);
-                        System.out.println("Changed " + file.getName() + " = " + changed);
-                        if (saveChanges) {
-                            // write the properties.
-                            writeProperties(props, file);
-                        }
+                int changed = fixTranslations(file.getName(), props);
+                if (changed > 0) {
+                    changes.add(l);
+                    System.out.println("Changed " + file.getAbsolutePath() + " = " + changed + ", saveChanges=" + saveChanges);
+                    if (saveChanges) {
+                        // write the properties.
+                        writeProperties(props, file);
                     }
                 }
             }
+        }
 
 
         return changes;
     }
+
+    public Collection<String> checkInputs() throws Exception {
+        Collection<String> changes = new HashSet<>();
+
+
+        for (String l : getLanguages()) {
+            File file = getFileDest(l);
+            if (file.exists()) {
+                checkInput(file);
+            }
+        }
+
+
+        return changes;
+    }
+
+    private void checkInput(File file) throws Exception {
+        if (file.exists()) {
+            Properties props = PropertyUtils.readProperties(file);
+            for (Object k : props.keySet()) {
+                String key = k.toString();
+                if (!key.equals(key.toUpperCase()))
+                    throw new Exception("Expected uppercase key:" + key + " in " + file);
+
+            }
+        }
+    }
+
 
     private int wordCount(Properties properties) {
         int wc = 0;
@@ -230,7 +282,6 @@ public class TranslateProperties {
             if (!v.isEmpty()) {
                 if (v.contains("  ")) {
                     v = v.replace("  ", " ");
-                    assert (false);
                 }
                 wc++;
                 for (char c : v.toCharArray()) {
@@ -243,31 +294,46 @@ public class TranslateProperties {
     }
 
 
-    private int fixTranslations(Properties properties) {
+    private int fixTranslations(String which, Properties properties) {
         int count = 0;
 
         HashSet<String> toDelete = new HashSet<>();
 
         for (Object k : properties.keySet()) {
-            String v = properties.getProperty(k.toString());
-            String o = baseProperties.getProperty(k.toString());
+            String key = k.toString();
+            boolean badCase = false;
+            if (!key.equals(key.toUpperCase())) {
+                badCase = true;
+                if (requireUpperCaseKeys)
+                    key = key.toUpperCase();
+            }
+
+
+            String v = properties.getProperty(key);
+            String o = baseProperties.getProperty(key);
             if (o == null) {
-                System.out.println("Key no longer in base properties:" + k + " but exists in translated file. Will be deleted:\n" + v);
+                System.out.println("Key no longer in base properties:" + k + " but exists in translated file. Will be deleted:\n" + k + "->" + v);
                 toDelete.add(k.toString());
                 count++;
                 continue;
             }
 
             String c = FixTranslation.instance.fixLine(v, baseProperties.getProperty(k.toString()));
-            if (!v.equals(c)) {
+            if (!v.equals(c) || badCase) {
                 count++;
                 if (verbose)
-                    System.out.println(v + "\n" + c);
+                    System.out.println(which + " " + k + " fixed from/to\n" + v + "\n" + c);
                 properties.put(k.toString(), c);
             }
+
+            if (c.contains(" !")) {
+                System.out.println("Found non-breaking ( !) space in " + k+" for "+which);
+                toDelete.add(k.toString());
+            }
+
         }
 
-        for (String k:toDelete)
+        for (String k : toDelete)
             properties.remove(k);
 
         return count;
@@ -291,10 +357,12 @@ public class TranslateProperties {
         return targetFile;
     }
 
+
     // Do translations for all selected languages and save as a properties file.
     // key set is either a list of keys that have changed translations (and need to be re-translated)
     // or it is all keys.
-    public Properties translateStrings(String targetLanguage, Set<String> mustUpdateKeySet, boolean saveChanges) throws Exception {
+    public Properties translateStrings(String targetLanguage, Set<String> mustUpdateKeySet, boolean saveChanges) throws
+            Exception {
         File targetFile = getFileDest(targetLanguage);
         Properties p = targetFile.exists() ? PropertyUtils.readProperties(targetFile) : new Properties();
         assert (!targetLanguage.equals(getSourceLanguage()));
@@ -303,14 +371,20 @@ public class TranslateProperties {
                 String key = e.getKey().toString();
                 String value = e.getValue().toString();
                 String foreignValue = p.getProperty(key);
-                boolean needTranslation = mustUpdateKeySet.contains(key) || foreignValue == null || foreignValue.contains("&#");
+                boolean needTranslation = mustUpdateKeySet.contains(key) || foreignValue == null || foreignValue.contains("&#") || foreignValue.isEmpty();
+                if (key.equals("COMMAND_COPY") && targetLanguage.equals("ja"))
+                    System.currentTimeMillis();
 
                 if (needTranslation) {
-                    String translatedString = GoogleTranslate.instance.translateFormattedString(value, getSourceLanguage(), targetLanguage);
-                    p.put(key, translatedString);
-                    count++;
-                    if (verbose) {
-                        System.out.println(count + ". " + key + ":" + value + " -> " + translatedString);
+                    try {
+                        String translatedString = GoogleTranslate.instance.translateFormattedString(value, getSourceLanguage(), targetLanguage);
+                        p.put(key, translatedString);
+                        count++;
+                        if (verbose) {
+                            System.out.println(count + ". " + key + ":" + value + " -> " + translatedString);
+                        }
+                    } catch (Throwable th) {
+                        System.err.println("Unable to translate:" + value);
                     }
                 }
             }
@@ -319,6 +393,7 @@ public class TranslateProperties {
             writeProperties(p, targetFile);
         return p;
     }
+
 
 }
 

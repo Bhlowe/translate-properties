@@ -1,3 +1,5 @@
 /.idea/
 /target/
 translate-properties.iml
+/src/main/java/com/nuspectra/translation/OA.java
+translate-properties.iml
